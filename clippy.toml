@@ -1,0 +1,4 @@
+disallowed-methods = [
+    "eyre::Report::is",
+    "eyre::Report::downcast_ref",
+]

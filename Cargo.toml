@@ -1,0 +1,52 @@
+[package]
+name = "nix-deploy"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+rustix = { version = "1.1.2", features = ["termios", "process"] }
+rustix-openpty = "0.2.0"
+libc = "0.2.172"
+ratatui = { version = "0.29.0", features = ["unstable-rendered-line-info"] }
+crossterm = "0.29.0"
+ansi-to-tui = "7.0.0"
+clap = { version = "4.5.36", features = ["derive"] }
+eyre = "0.6.12"
+scopeguard = "1.2.0"
+serde = { version = "1.0.216", features = ["derive"] }
+serde_json = "1.0.133"
+parking_lot = "0.12.3"
+flume = "0.11.1"
+winnow = "0.7.10"
+circular = "0.3.0"
+itertools = "0.14.0"
+thiserror = "2.0.7"
+os_pipe = "1.2.1"
+polling = "3.7.4"
+camino = { version = "1.1.9", features = ["serde1"] }
+tap = "1.0.1"
+once_cell = "1.20.2"
+ssh-key = { version = "0.6.7", features = ["serde"] }
+serde_with = { version = "3.11.0", features = ["hex"] }
+bech32 = "0.11.0"
+curve25519-dalek = "4.1.3"
+toml = "0.8.20"
+regex = "1.11.1"
+serde-inline-default = "0.2.3"
+saphyr = "0.0.4"
+tracing = "0.1.41"
+tracing-subscriber = { version = "0.3.19", features = ["env-filter"] }
+tempfile = "3.19.1"
+const_format = { version = "0.2.34" }
+base64 = "0.22.1"
+bstr = "1.11.1"
+miette = { version = "7.5.0", features = ["fancy"] }
+derive_more = { version = "2.0.1", features = ["display", "error", "debug", "from"] }
+
+[lints.rust]
+irrefutable_let_patterns = "allow"
+
+[lints.clippy]
+needless_lifetimes = "allow"
+disallowed_methods = "deny"
+too_many_arguments = "allow"
