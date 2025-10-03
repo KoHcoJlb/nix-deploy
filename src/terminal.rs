@@ -39,8 +39,7 @@ pub fn create_terminal(height: u16) -> RawTerminal<Stdout> {
 
 pub fn print_error(err: Report) {
     if let Some(CommandExit { stderr, .. }) = downcast_ref(&err) {
-        error!(?err);
-        println!("\n{stderr}");
+        error!(?err, stderr = %format!("\n{stderr}"));
     } else {
         error!(?err);
     }

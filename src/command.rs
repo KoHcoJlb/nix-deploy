@@ -15,7 +15,6 @@ use polling::{Event, Events, Poller};
 use rustix::process::Pid;
 use rustix_openpty::openpty;
 use serde::de::DeserializeOwned;
-use tap::Tap;
 
 use crate::{config::config, line_reader::LineReader};
 
@@ -212,11 +211,9 @@ pub fn run_command_tty(cmd: Command) -> Result<BString, CommandError> {
 }
 
 pub fn nix_eval<T: DeserializeOwned>(attr: impl AsRef<str>) -> Result<T> {
-    let cmd = Command::new("nix").tap_mut(|cmd| {
-        cmd.args(["eval", "--json", "--read-only", "--store"])
-            .arg(&config().eval_store)
-            .arg(format!("path:./flake#{}", attr.as_ref()));
-    });
-
+    let mut cmd = Command::new("nix");
+    cmd.args(["eval", "--json", "--read-only", "--store"])
+        .arg(&config().eval_store)
+        .arg(format!("path:./flake#{}", attr.as_ref()));
     serde_json::from_slice(&run_command_tty(cmd)?).context("parse nix eval result")
 }

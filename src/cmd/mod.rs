@@ -39,14 +39,11 @@ impl SystemSelector {
             resolve_systems_metadata(&systems.get_systems()).context("resolve metadata")?;
 
         let tags: HashSet<_> = HashSet::from_iter(self.tags.iter().cloned());
-
-        let systems = systems.into_iter().filter(|s| !s.metadata().skip);
-
-        Ok(if tags.contains("all") {
-            systems.collect()
-        } else {
-            systems.filter(|s| s.metadata().tags.is_superset(&tags)).collect()
-        })
+        Ok(systems
+            .into_iter()
+            .filter(|s| !s.metadata().skip)
+            .filter(|s| tags.contains("all") || s.metadata().tags.is_superset(&tags))
+            .collect())
     }
 }
 

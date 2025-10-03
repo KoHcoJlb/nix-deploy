@@ -36,6 +36,7 @@ pub fn run() -> Result<()> {
         .with_env_filter("nix_deploy=trace")
         .with_writer(|| TERMINAL.writer())
         .with_timer(Uptime::default())
+        .with_target(false)
         .init();
 
     let flake = Flake::load().context("load flake")?;

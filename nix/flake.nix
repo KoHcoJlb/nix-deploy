@@ -38,7 +38,6 @@
             nixosSystem {
               specialArgs = {
                 inherit inputs values;
-
                 systems = mapAttrs (_: system: system.config) systemsUnmerged;
               };
               modules = [
@@ -60,7 +59,8 @@
                     hostName = name;
                   };
                 }
-              ] ++ modules;
+              ]
+              ++ modules;
             };
 
           systems = mapAttrs makeSystemFn hosts;

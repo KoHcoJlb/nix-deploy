@@ -16,9 +16,9 @@
 
         services = {
           host-keys-setup = rec {
-            requires = ["initrd-root-fs.target"];
+            requires = [ "initrd-root-fs.target" ];
             after = requires;
-            wantedBy = ["initrd.target"];
+            wantedBy = [ "initrd.target" ];
 
             script = ''
               cat /etc/machine-id
