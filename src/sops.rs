@@ -4,9 +4,9 @@ use bech32::{Bech32, Hrp};
 use camino::Utf8Path;
 use curve25519_dalek::edwards::CompressedEdwardsY;
 use eyre::{Context, Result, ensure};
+use russh::keys::ssh_key::public::Ed25519PublicKey;
 use saphyr::{LoadableYamlNode, Yaml};
 use serde::Serialize;
-use ssh_key::public::Ed25519PublicKey;
 
 #[derive(Debug, Serialize)]
 pub struct KeyGroup {

@@ -4,7 +4,7 @@ use std::{collections::HashSet, io::Write};
 
 use clap::{Args, Subcommand};
 use eyre::{Context, Result};
-use ssh_key::PublicKey;
+use russh::keys::PublicKey;
 
 use crate::{
     flake::{Flake, System, resolve_systems_metadata},

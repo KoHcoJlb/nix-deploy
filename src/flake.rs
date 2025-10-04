@@ -9,13 +9,14 @@ use std::{
 
 use Utf8Component::RootDir;
 use bstr::ByteSlice;
+use by_address::ByAddress;
 use camino::{Utf8Component, Utf8Path, Utf8PathBuf};
 use eyre::{Context, Result, eyre};
 use once_cell::sync::OnceCell;
 use parking_lot::RwLock;
+use russh::keys::ssh_key::public::Ed25519PublicKey;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use serde_with::{DeserializeAs, SerializeAs, formats, hex::Hex, serde_as};
-use ssh_key::public::Ed25519PublicKey;
 use tap::Tap;
 use tracing::trace;
 
@@ -71,8 +72,8 @@ struct SystemInner {
     metadata: OnceCell<SystemMetadata>,
 }
 
-#[derive(Debug, Clone, Copy)]
-pub struct System<'a, const Metadata: bool>(&'a SystemInner);
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct System<'a, const Metadata: bool>(ByAddress<&'a SystemInner>);
 
 impl<'a> System<'a, false> {
     pub fn with_metadata(&self) -> Result<System<'a, true>> {
@@ -195,11 +196,11 @@ impl Flake {
     }
 
     pub fn get_system(&self, name: &str) -> Result<System<'_, false>> {
-        self.systems.get(name).map(System).ok_or(eyre!("unknown system '{name}'"))
+        self.systems.get(name).map(ByAddress).map(System).ok_or(eyre!("unknown system '{name}'"))
     }
 
     pub fn get_systems(&self) -> Vec<System<'_, false>> {
-        self.systems.values().map(System).collect()
+        self.systems.values().map(ByAddress).map(System).collect()
     }
 
     pub fn save_system_state(self) -> Result<()> {

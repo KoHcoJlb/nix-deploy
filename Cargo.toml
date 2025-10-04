@@ -26,7 +26,6 @@ polling = "3.7.4"
 camino = { version = "1.1.9", features = ["serde1"] }
 tap = "1.0.1"
 once_cell = "1.20.2"
-ssh-key = { version = "0.6.7", features = ["serde"] }
 serde_with = { version = "3.11.0", features = ["hex"] }
 bech32 = "0.11.0"
 curve25519-dalek = "4.1.3"
@@ -42,6 +41,11 @@ base64 = "0.22.1"
 bstr = "1.11.1"
 miette = { version = "7.5.0", features = ["fancy"] }
 derive_more = { version = "2.0.1", features = ["display", "error", "debug", "from"] }
+by_address = "1.2.1"
+
+tokio = { version = "1.47.1", features = ["rt"] }
+futures = "0.3.31"
+russh = "0.54.4"
 
 [lints.rust]
 irrefutable_let_patterns = "allow"

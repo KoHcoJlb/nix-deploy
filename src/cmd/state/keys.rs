@@ -1,27 +1,27 @@
 use std::{
     collections::{HashMap, HashSet},
     fs,
-    process::Command,
 };
 
 use camino::Utf8Path;
 use clap::Subcommand;
-use eyre::{Context, Result, eyre};
-use ssh_key::{KnownHosts, known_hosts::HostPatterns, public::KeyData};
+use eyre::{Result, WrapErr};
+use russh::keys::ssh_key::public::KeyData;
+use tokio::runtime::Runtime;
+use tracing::{info, warn};
 
 use crate::{
-    command::run_command,
+    cmd::state::get_systems,
     config::config,
-    flake::{Flake, System, resolve_systems_metadata},
     sops,
     sops::{CreationRule, KeyGroup},
+    ssh::keyscan,
     state::CliState,
 };
 
 #[derive(Debug, Subcommand)]
 pub enum Commands {
-    Refresh,
-    Sops,
+    Fetch,
 }
 
 #[derive(Debug, clap::Args)]
@@ -30,43 +30,26 @@ pub struct Args {
     command: Commands,
 }
 
-fn get_systems(flake: &Flake) -> Result<Vec<System<'_, true>>> {
-    let systems = flake.get_systems();
-    resolve_systems_metadata(&systems).context("resolve metadata")
-}
-
-fn refresh(cli_state: &mut CliState) -> Result<()> {
+#[allow(clippy::mutable_key_type)]
+fn fetch(cli_state: &mut CliState) -> eyre::Result<()> {
     let systems = get_systems(&cli_state.flake)?;
 
-    let mut cmd = Command::new("ssh-keyscan");
-    cmd.args(["-t", "ed25519", "-q"]).args(systems.iter().map(|s| &s.metadata().target_host));
-    let res = run_command(cmd).context("keyscan")?;
-
-    let hosts = KnownHosts::new(&res);
-    for host in hosts {
-        let host = host?;
-
-        let (KeyData::Ed25519(key), HostPatterns::Patterns(patterns)) =
-            (host.public_key().key_data(), host.host_patterns())
-        else {
+    let keys = Runtime::new()?.block_on(keyscan(systems.iter().copied()));
+    for (system, key) in keys {
+        let KeyData::Ed25519(key) = *key.key_data() else {
             continue;
         };
 
-        let host = patterns.first().unwrap();
-        systems
-            .iter()
-            .find(|s| &s.metadata().target_host == host)
-            .ok_or(eyre!("system not found for '{host}', probably wrong ssh-keyscan output"))?
-            .state()
-            .write()
-            .public_key = Some(*key)
+        let mut state = system.state().write();
+        if let Some(prev) = state.public_key
+            && prev != key
+        {
+            warn!(system = system.name(), "key changed")
+        } else if state.public_key.is_none() {
+            info!(system = system.name(), "fetched key");
+            state.public_key = Some(key);
+        }
     }
-
-    Ok(())
-}
-
-fn sops(cli_state: &mut CliState) -> Result<()> {
-    let systems = get_systems(&cli_state.flake)?;
 
     let mut files = HashMap::<&Utf8Path, HashSet<String>>::new();
 
@@ -102,9 +85,8 @@ fn sops(cli_state: &mut CliState) -> Result<()> {
     Ok(())
 }
 
-pub fn run(cli_state: &mut CliState, args: &Args) -> Result<()> {
+pub(super) fn run(cli: &mut CliState, args: &Args) -> Result<()> {
     match args.command {
-        Commands::Refresh => refresh(cli_state),
-        Commands::Sops => sops(cli_state),
+        Commands::Fetch => fetch(cli),
     }
 }

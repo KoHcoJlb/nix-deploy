@@ -16,6 +16,7 @@ pub mod config;
 pub mod flake;
 pub mod line_reader;
 pub mod sops;
+pub mod ssh;
 pub mod state;
 pub mod terminal;
 pub mod util;

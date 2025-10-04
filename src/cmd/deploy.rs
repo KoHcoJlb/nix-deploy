@@ -25,8 +25,8 @@ use ratatui::{
     style::Stylize,
     text::{Text, ToSpan},
 };
+use russh::keys::PublicKey;
 use rustix::process::{Pid, Signal, kill_process};
-use ssh_key::PublicKey;
 use tap::Tap;
 use tempfile::TempDir;
 use tracing::{debug, error, info, info_span, warn};
