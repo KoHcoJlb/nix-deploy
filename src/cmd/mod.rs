@@ -1,19 +1,19 @@
 #![allow(private_interfaces)]
 
-use std::{collections::HashSet, io::Write};
+use std::collections::HashSet;
 
 use clap::{Args, Subcommand};
 use eyre::{Context, Result};
 use russh::keys::PublicKey;
+use tracing::info;
 
 use crate::{
     flake::{Flake, System, resolve_systems_metadata},
     state::CliState,
-    terminal::TERMINAL,
 };
 
 mod deploy;
-mod state;
+mod keys;
 
 #[derive(Args, Debug)]
 #[group(multiple = false, required = true)]
@@ -57,7 +57,7 @@ struct ListArgs {
 pub enum Command {
     #[command(flatten)]
     Build(deploy::Subcommand),
-    State(state::Args),
+    Keys(keys::Args),
     List(ListArgs),
     Tags,
     Test,
@@ -66,10 +66,9 @@ pub enum Command {
 fn list(state: &mut CliState, args: &ListArgs) -> Result<()> {
     let systems = args.selector.resolve(&state.flake).context("resolve systems")?;
 
-    // info!(?systems);
-    // writeln!(&*TERMINAL, "hello")?;
-    // writeln!(&*TERMINAL, "world")?;
-    writeln!(TERMINAL.writer(), "{systems:#?}")?;
+    for system in systems {
+        info!(?system);
+    }
 
     Ok(())
 }
@@ -103,7 +102,7 @@ fn test(state: &mut CliState) -> Result<()> {
 pub fn run(state: &mut CliState) -> Result<()> {
     match &state.cli.command {
         Command::Build(cmd) => deploy::run(state, cmd),
-        Command::State(args) => state::run(state, args),
+        Command::Keys(args) => keys::run(state, args),
         Command::List(args) => list(state, args),
         Command::Tags => tags(state),
         Command::Test => test(state),

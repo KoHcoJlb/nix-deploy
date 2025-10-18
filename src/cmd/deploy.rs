@@ -54,6 +54,8 @@ pub struct DeployCmd {
     systems: SystemSelector,
     #[arg(short, long)]
     reboot: bool,
+    #[arg(short, long)]
+    boot: bool,
 }
 
 #[derive(clap::Subcommand, Debug)]
@@ -138,7 +140,7 @@ impl<'a> Runner<'a> {
     }
 
     fn deploy(&self, ptx: &ProgressTx<'a>) -> Result<()> {
-        let &Subcommand::Deploy(DeployCmd { reboot, .. }) = self.cmd else { unreachable!() };
+        let &Subcommand::Deploy(args) = &self.cmd else { unreachable!() };
 
         let local_toplevel: Utf8PathBuf =
             fs::read_link(self.result_path()).context("read result link")?.try_into()?;
@@ -184,7 +186,7 @@ impl<'a> Runner<'a> {
         .trim()
         .to_owned();
         debug!(remote_version);
-        if remote_version != local_version && !reboot {
+        if remote_version != local_version && !args.reboot {
             self.post_update(ptx, "versions differ".red());
             error!("nixos versions differ, refusing to deploy without reboot");
             return Ok(());
@@ -229,11 +231,11 @@ impl<'a> Runner<'a> {
                     "--wait",
                 ])
                 .arg(format!("{local_toplevel}/bin/switch-to-configuration"))
-                .arg(if reboot { "boot" } else { "switch" });
+                .arg(if args.boot || args.reboot { "boot" } else { "switch" });
             }),
         )?;
 
-        if reboot {
+        if args.reboot {
             self.run_tty_command(
                 ptx,
                 "reboot",

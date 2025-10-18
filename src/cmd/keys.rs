@@ -11,8 +11,8 @@ use tokio::runtime::Runtime;
 use tracing::{info, warn};
 
 use crate::{
-    cmd::state::get_systems,
     config::config,
+    flake::{Flake, System, resolve_systems_metadata},
     sops,
     sops::{CreationRule, KeyGroup},
     ssh::keyscan,
@@ -22,6 +22,7 @@ use crate::{
 #[derive(Debug, Subcommand)]
 pub enum Commands {
     Fetch,
+    RefreshSops,
 }
 
 #[derive(Debug, clap::Args)]
@@ -30,29 +31,14 @@ pub struct Args {
     command: Commands,
 }
 
-#[allow(clippy::mutable_key_type)]
-fn fetch(cli_state: &mut CliState) -> eyre::Result<()> {
+fn get_systems(flake: &Flake) -> Result<Vec<System<'_, true>>> {
+    let systems = flake.get_systems();
+    resolve_systems_metadata(&systems).context("resolve metadata")
+}
+
+fn refresh_sops(cli_state: &mut CliState) -> Result<()> {
     let systems = get_systems(&cli_state.flake)?;
-
-    let keys = Runtime::new()?.block_on(keyscan(systems.iter().copied()));
-    for (system, key) in keys {
-        let KeyData::Ed25519(key) = *key.key_data() else {
-            continue;
-        };
-
-        let mut state = system.state().write();
-        if let Some(prev) = state.public_key
-            && prev != key
-        {
-            warn!(system = system.name(), "key changed")
-        } else if state.public_key.is_none() {
-            info!(system = system.name(), "fetched key");
-            state.public_key = Some(key);
-        }
-    }
-
     let mut files = HashMap::<&Utf8Path, HashSet<String>>::new();
-
     for system in systems {
         for path in &system.metadata().sops_files {
             let flake_path = cli_state.flake.metadata.strip_store_path(path)?;
@@ -85,8 +71,33 @@ fn fetch(cli_state: &mut CliState) -> eyre::Result<()> {
     Ok(())
 }
 
+#[allow(clippy::mutable_key_type)]
+fn fetch(cli_state: &mut CliState) -> Result<()> {
+    let systems = get_systems(&cli_state.flake)?;
+
+    let keys = Runtime::new()?.block_on(keyscan(systems.iter().copied()));
+    for (system, key) in keys {
+        let KeyData::Ed25519(key) = *key.key_data() else {
+            continue;
+        };
+
+        let mut state = system.state().write();
+        if let Some(prev) = state.public_key
+            && prev != key
+        {
+            warn!(system = system.name(), "key changed")
+        } else if state.public_key.is_none() {
+            info!(system = system.name(), "fetched key");
+            state.public_key = Some(key);
+        }
+    }
+
+    Ok(())
+}
+
 pub(super) fn run(cli: &mut CliState, args: &Args) -> Result<()> {
     match args.command {
         Commands::Fetch => fetch(cli),
+        Commands::RefreshSops => refresh_sops(cli),
     }
 }
