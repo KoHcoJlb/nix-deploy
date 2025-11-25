@@ -186,7 +186,7 @@ impl<'a> Runner<'a> {
         .trim()
         .to_owned();
         debug!(remote_version);
-        if remote_version != local_version && !args.reboot {
+        if remote_version != local_version && !(args.reboot || args.boot) {
             self.post_update(ptx, "versions differ".red());
             error!("nixos versions differ, refusing to deploy without reboot");
             return Ok(());
