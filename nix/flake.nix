@@ -38,7 +38,10 @@
             nixosSystem {
               specialArgs = {
                 inherit inputs values;
-                systems = mapAttrs (_: system: system.config) systemsUnmerged;
+
+                systems = filterAttrs (_: system: !system.deploy.skip) (
+                  mapAttrs (_: system: system.config) systemsUnmerged
+                );
               };
               modules = [
                 ./deploy.nix

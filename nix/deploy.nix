@@ -7,9 +7,13 @@ with lib;
     deploy = {
       global = mkOption {
         type = types.submoduleWith {
-          modules = [];
+          modules = [
+            {
+              freeformType = types.attrsOf types.anything;
+            }
+          ];
         };
-        default = {};
+        default = { };
       };
 
       targetHost = mkOption {
@@ -19,7 +23,7 @@ with lib;
 
       tags = mkOption {
         type = types.listOf types.str;
-        default = [];
+        default = [ ];
       };
 
       skip = mkOption {
