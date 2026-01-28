@@ -1,6 +1,7 @@
 use std::{
     collections::{HashMap, HashSet},
     fs,
+    process::{Command, Stdio},
 };
 
 use camino::Utf8Path;
@@ -17,6 +18,7 @@ use crate::{
     sops::{CreationRule, KeyGroup},
     ssh::keyscan,
     state::CliState,
+    terminal::TERMINAL,
 };
 
 #[derive(Debug, Subcommand)]
@@ -51,22 +53,29 @@ fn refresh_sops(cli_state: &mut CliState) -> Result<()> {
 
     let json = serde_json::to_string_pretty(&sops::SopsYaml {
         creation_rules: files
-            .into_iter()
+            .iter()
             .map(|(path, keys)| CreationRule {
                 path_regex: regex::escape(Utf8Path::new("flake").join(path).as_str()),
                 key_groups: vec![KeyGroup {
-                    age: config()
-                        .sops
-                        .management_keys
-                        .iter()
-                        .cloned()
-                        .chain(keys.into_iter())
-                        .collect(),
+                    age: config().sops.management_keys.iter().chain(keys.iter()).cloned().collect(),
                 }],
             })
             .collect(),
     })?;
     fs::write(".sops.yaml", &json).context("write .sops.yaml")?;
+
+    let mut cmd = Command::new("sops");
+    cmd.args(["updatekeys", "-y"])
+        .args(
+            files
+                .keys()
+                .map(|p| cli_state.flake.metadata.flake_abs_path(p))
+                .collect::<Result<Vec<_>>>()?,
+        )
+        .stdin(Stdio::null());
+
+    let _writer = TERMINAL.writer();
+    cmd.spawn()?.wait()?;
 
     Ok(())
 }

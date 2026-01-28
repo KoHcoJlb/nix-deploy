@@ -310,7 +310,10 @@ pub fn run(state: &mut CliState, cmd: &Subcommand) -> Result<()> {
 
     for system in &systems {
         for path in &system.metadata().sops_files {
-            let path = state.flake.metadata.flake_abs_path(path)?;
+            let path = state
+                .flake
+                .metadata
+                .flake_abs_path(state.flake.metadata.strip_store_path(path)?)?;
             sops::verify_encrypted(&path).context(format!("verify sops file '{path}'"))?;
         }
     }

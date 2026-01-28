@@ -126,7 +126,7 @@ impl FlakeMetadata {
     }
 
     pub fn flake_abs_path(&self, path: &Utf8Path) -> Result<Utf8PathBuf> {
-        Ok(Utf8Path::new("flake").join(self.strip_store_path(path)?))
+        Ok(Utf8Path::new("flake").join(path))
     }
 }
 
