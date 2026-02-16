@@ -23,7 +23,10 @@ use crate::{
 
 #[derive(Debug, Subcommand)]
 pub enum Commands {
-    Fetch,
+    Fetch {
+        #[arg(short, long, help = "Refresh sops")]
+        sops: bool,
+    },
     RefreshSops,
 }
 
@@ -106,7 +109,14 @@ fn fetch(cli_state: &mut CliState) -> Result<()> {
 
 pub(super) fn run(cli: &mut CliState, args: &Args) -> Result<()> {
     match args.command {
-        Commands::Fetch => fetch(cli),
-        Commands::RefreshSops => refresh_sops(cli),
+        Commands::Fetch { sops } => {
+            fetch(cli)?;
+            if sops {
+                refresh_sops(cli)?;
+            }
+        }
+        Commands::RefreshSops => refresh_sops(cli)?,
     }
+
+    Ok(())
 }
