@@ -67,15 +67,25 @@ fn refresh_sops(cli_state: &mut CliState) -> Result<()> {
     })?;
     fs::write(".sops.yaml", &json).context("write .sops.yaml")?;
 
+    let mut already_encrypted_files = vec![];
+    for file in files.keys().map(|p| cli_state.flake.metadata.flake_abs_path(p)) {
+        let file = file?;
+
+        if sops::is_encrypted(&file)? {
+            already_encrypted_files.push(file);
+        } else {
+            info!(%file, "encrypt");
+
+            let mut cmd = Command::new("sops");
+            cmd.args(["encrypt", "-i"]).arg(file).stdin(Stdio::null());
+
+            let _writer = TERMINAL.writer();
+            cmd.spawn()?.wait()?;
+        }
+    }
+
     let mut cmd = Command::new("sops");
-    cmd.args(["updatekeys", "-y"])
-        .args(
-            files
-                .keys()
-                .map(|p| cli_state.flake.metadata.flake_abs_path(p))
-                .collect::<Result<Vec<_>>>()?,
-        )
-        .stdin(Stdio::null());
+    cmd.args(["updatekeys", "-y"]).args(already_encrypted_files).stdin(Stdio::null());
 
     let _writer = TERMINAL.writer();
     cmd.spawn()?.wait()?;

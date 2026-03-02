@@ -1,4 +1,4 @@
-use std::{fs, io::BufRead};
+use std::fs;
 
 use bech32::{Bech32, Hrp};
 use camino::Utf8Path;
@@ -32,20 +32,21 @@ pub fn public_key_to_age(key: Ed25519PublicKey) -> String {
     bech32::encode::<Bech32>(Hrp::parse_unchecked("age"), x25519.as_bytes()).unwrap()
 }
 
+pub fn is_encrypted(path: &Utf8Path) -> Result<bool> {
+    let data = fs::read_to_string(path).context("read file")?;
+    if data.lines().any(|l| l.starts_with("sops_version=")) {
+        return Ok(true);
+    }
+
+    let yaml = Yaml::load_from_str(&data)?;
+    Ok(yaml
+        .first()
+        .and_then(|y| y.as_mapping())
+        .map(|h| h.contains_key(&Yaml::value_from_str("sops")))
+        .unwrap_or(false))
+}
+
 pub fn verify_encrypted(path: &Utf8Path) -> Result<()> {
-    let data = fs::read(path).context("read file")?;
-    let res = match path.extension() {
-        Some("env") => data.lines().map(Result::unwrap).any(|l| l.starts_with("sops_version=")),
-        _ => {
-            let yaml = Yaml::load_from_str(std::str::from_utf8(&data)?)?;
-            yaml.first()
-                .and_then(|y| y.as_mapping())
-                .map(|h| h.contains_key(&Yaml::value_from_str("sops")))
-                .unwrap_or(false)
-        }
-    };
-
-    ensure!(res, "not encrypted");
-
+    ensure!(is_encrypted(path)?, "not encrypted");
     Ok(())
 }
