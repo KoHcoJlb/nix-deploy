@@ -97,7 +97,9 @@ fn refresh_sops(cli_state: &mut CliState) -> Result<()> {
 fn fetch(cli_state: &mut CliState) -> Result<()> {
     let systems = get_systems(&cli_state.flake)?;
 
-    let keys = Runtime::new()?.block_on(keyscan(systems.iter().copied()));
+    let keys = Runtime::new()?.block_on(keyscan(
+        systems.iter().filter(|s| s.state().read().public_key.is_none()).copied(),
+    ));
     for (system, key) in keys {
         let KeyData::Ed25519(key) = *key.key_data() else {
             continue;
