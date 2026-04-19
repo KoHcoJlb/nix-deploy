@@ -196,7 +196,7 @@ impl<'a> Runner<'a> {
             ptx,
             "nix copy",
             Command::new("nix").tap_mut(|cmd| {
-                cmd.args(["copy", "--no-check-sigs", "--to"])
+                cmd.args(["copy", "--no-check-sigs", "--substitute-on-destination", "--to"])
                     .arg(format!("ssh-ng://{target_host}"))
                     .arg(&local_toplevel)
                     .env("NIX_SSHOPTS", format!("-F {ssh_config_file}"));
