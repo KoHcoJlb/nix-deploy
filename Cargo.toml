@@ -45,7 +45,7 @@ by_address = "1.2.1"
 
 tokio = { version = "1.47.1", features = ["rt"] }
 futures = "0.3.31"
-russh = "0.54.4"
+russh = { version = "0.54.4", default-features = false, features = ["flate2", "ring", "rsa"] }
 
 [lints.rust]
 irrefutable_let_patterns = "allow"
