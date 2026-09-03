@@ -107,14 +107,13 @@ impl Inner {
     fn get_terminal(&mut self) -> Result<&mut RawTerminal> {
         ensure!(self.height > 0, "zero height terminal");
 
-        if self.terminal.is_some() {
-            return Ok(self.terminal.as_mut().unwrap());
+        match &mut self.terminal {
+            Some(terminal) => Ok(terminal),
+            terminal => Ok(terminal.insert(RawTerminal::with_options(
+                CrosstermBackend::new(self.writer.try_clone()?),
+                TerminalOptions { viewport: Viewport::Inline(self.height) },
+            )?)),
         }
-
-        Ok(self.terminal.insert(RawTerminal::with_options(
-            CrosstermBackend::new(self.writer.try_clone()?),
-            TerminalOptions { viewport: Viewport::Inline(self.height) },
-        )?))
     }
 }
 

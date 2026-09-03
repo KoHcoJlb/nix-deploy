@@ -29,7 +29,7 @@
 # Verification
 
 - Fast Rust compile check: `cargo check --lib --bin nix-deploy`.
-- Lint the product targets with `cargo clippy --lib --bin nix-deploy`. Do not assume `-D warnings` currently passes; there is a known `clippy::unnecessary_unwrap` warning in `src/terminal.rs`.
+- Lint the product targets with `cargo clippy --lib --bin nix-deploy`.
 - Format Rust with nightly because `rustfmt.toml` uses unstable import options: `cargo +nightly fmt --all -- --check`; omit `-- --check` to apply formatting.
 - Run one unit test with `cargo test --lib <test-path>`.
 - Parse-check changed Nix files with `nix-instantiate --parse <file> >/dev/null`. The repository's `nix/flake.nix` is not a standalone application flake, so generic `nix flake check ./nix` is not the focused validation path.
