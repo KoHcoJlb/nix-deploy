@@ -259,7 +259,7 @@ impl<'a> Runner<'a> {
                 cmd.arg("build")
                     .arg("--impure")
                     .arg(format!(
-                        "./flake#nixosConfigurations.{}.config.system.build.toplevel",
+                        "path:./flake#nixosConfigurations.{}.config.system.build.toplevel",
                         self.system.name()
                     ))
                     .arg("-o")

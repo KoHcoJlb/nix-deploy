@@ -91,8 +91,11 @@ mod tests {
     #[test]
     fn test_line_reader() -> Result<()> {
         let mut reader = LineReader::new(Cursor::new("test"), 1024);
-        let res = reader.read_line()?;
-        assert_eq!(res, Line::Line("test".to_owned()));
+
+        assert_eq!(reader.read_line()?, Line::Incomplete);
+        assert_eq!(reader.read_line()?, Line::Line("test".to_owned()));
+        assert_eq!(reader.read_line()?, Line::Eof);
+
         Ok(())
     }
 }

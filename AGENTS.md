@@ -15,7 +15,7 @@
 - Run the binary from a deployment workspace, not this source root. The current directory must contain `nix-deploy.toml` and a `flake/` directory; all paths are fixed relative to that directory.
 - Every invocation first loads `nix-deploy.toml`, so even `--help` is not context-free. Operational commands then initialize a real stdout TTY, evaluate `path:./flake`, and read/write `systems.json`.
 - `eval_store` defaults to `auto`; any other value is canonicalized at startup and must already exist. The flake directory is intentionally evaluated with path syntax so untracked files are visible.
-- Builds use `nix build --impure ./flake#nixosConfigurations.<name>.config.system.build.toplevel -o cache/<name>` and run selected systems concurrently.
+- Builds use `nix build --impure path:./flake#nixosConfigurations.<name>.config.system.build.toplevel -o cache/<name>` and run selected systems concurrently.
 - System selection requires exactly one of `--names` or `--tags`. Tag selection excludes `deploy.skip` systems and matches when a system contains every requested tag; `--tags all` selects every non-skipped system.
 
 # Deploy And Keys
@@ -31,7 +31,7 @@
 - Fast Rust compile check: `cargo check --lib --bin nix-deploy`.
 - Lint the product targets with `cargo clippy --lib --bin nix-deploy`. Do not assume `-D warnings` currently passes; there is a known `clippy::unnecessary_unwrap` warning in `src/terminal.rs`.
 - Format Rust with nightly because `rustfmt.toml` uses unstable import options: `cargo +nightly fmt --all -- --check`; omit `-- --check` to apply formatting.
-- Run one unit test with `cargo test --lib <test-path>`, but note that the current `line_reader::tests::test_line_reader` test fails because its first read returns `Incomplete`.
+- Run one unit test with `cargo test --lib <test-path>`.
 - Parse-check changed Nix files with `nix-instantiate --parse <file> >/dev/null`. The repository's `nix/flake.nix` is not a standalone application flake, so generic `nix flake check ./nix` is not the focused validation path.
 - Do not use `cargo run` as routine verification: it needs a deployment workspace, external `nix`/`ssh`/`sops` tools depending on the command, network access for operational commands, and a real TTY.
 
