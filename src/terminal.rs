@@ -13,6 +13,7 @@ use crossterm::{
     event,
     event::{Event, KeyCode, KeyEvent, KeyModifiers},
 };
+use derive_more::{Display, Error};
 use eyre::{Report, Result, ensure};
 use parking_lot::{Mutex, MutexGuard};
 use ratatui::{
@@ -23,7 +24,6 @@ use ratatui::{
 };
 use rustix::termios::{OptionalActions::Now, OutputModes, Termios, tcgetattr, tcsetattr};
 use tap::{Pipe, Tap};
-use thiserror::Error;
 use tracing::error;
 use tracing_subscriber::fmt::{format::Writer, time::FormatTime};
 
@@ -45,12 +45,12 @@ pub fn print_error(err: Report) {
     }
 }
 
-#[derive(Error, Debug)]
-#[error("title: {text}")]
+#[derive(Debug, Display, Error)]
+#[display("title: {text}")]
 pub struct ErrorStyle {
     text: Line<'static>,
     top: bool,
-    #[source]
+    #[error(source)]
     inner: Report,
 }
 

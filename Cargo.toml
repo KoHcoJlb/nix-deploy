@@ -4,48 +4,40 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
-rustix = { version = "1.1.2", features = ["termios", "process"] }
+rustix = { version = "1.1.4", features = ["termios", "process"] }
 rustix-openpty = "0.2.0"
-libc = "0.2.172"
-ratatui = { version = "0.29.0", features = ["unstable-rendered-line-info"] }
+ratatui = { version = "0.30.2", default-features = false, features = ["crossterm_0_29", "unstable-rendered-line-info"] }
 crossterm = "0.29.0"
-ansi-to-tui = "7.0.0"
-clap = { version = "4.5.36", features = ["derive"] }
-eyre = "0.6.12"
+ansi-to-tui = "8.0.1"
+clap = { version = "4.6.6", features = ["derive"] }
+eyre = "0.6.14"
 scopeguard = "1.2.0"
-serde = { version = "1.0.216", features = ["derive"] }
-serde_json = "1.0.133"
-parking_lot = "0.12.3"
-flume = "0.11.1"
-winnow = "0.7.10"
+serde = { version = "1.0.229", features = ["derive"] }
+serde_json = "1.0.151"
+parking_lot = "0.12.5"
+flume = { version = "0.12.0", default-features = false }
+winnow = { version = "1.0.4", default-features = false, features = ["std", "parser"] }
 circular = "0.3.0"
-itertools = "0.14.0"
-thiserror = "2.0.7"
-os_pipe = "1.2.1"
-polling = "3.7.4"
-camino = { version = "1.1.9", features = ["serde1"] }
+polling = "3.11.0"
+camino = { version = "1.2.5", features = ["serde1"] }
 tap = "1.0.1"
-once_cell = "1.20.2"
-serde_with = { version = "3.11.0", features = ["hex"] }
-bech32 = "0.11.0"
-curve25519-dalek = "4.1.3"
-toml = "0.8.20"
-regex = "1.11.1"
-serde-inline-default = "0.2.3"
-saphyr = "0.0.4"
-tracing = "0.1.41"
-tracing-subscriber = { version = "0.3.19", features = ["env-filter"] }
-tempfile = "3.19.1"
-const_format = { version = "0.2.34" }
-base64 = "0.22.1"
-bstr = "1.11.1"
-miette = { version = "7.5.0", features = ["fancy"] }
-derive_more = { version = "2.0.1", features = ["display", "error", "debug", "from"] }
+once_cell = "1.21.4"
+serde_with = { version = "3.22.0", features = ["hex"] }
+bech32 = "0.12.0"
+curve25519-dalek = "5.0.0"
+toml = { version = "1.1.5", default-features = false, features = ["std", "serde", "parse"] }
+regex = "1.13.1"
+saphyr = { version = "0.0.12", default-features = false }
+tracing = { version = "0.1.44", default-features = false, features = ["std"] }
+tracing-subscriber = { version = "0.3.23", features = ["env-filter"] }
+tempfile = "3.27.0"
+bstr = { version = "1.13.1", default-features = false, features = ["std"] }
+derive_more = { version = "2.1.1", features = ["display", "error", "debug", "from"] }
 by_address = "1.2.1"
 
-tokio = { version = "1.47.1", features = ["rt"] }
-futures = "0.3.31"
-russh = { version = "0.54.4", default-features = false, features = ["flate2", "ring", "rsa"] }
+tokio = { version = "1.53.1", features = ["rt"] }
+futures = "0.3.34"
+russh = { version = "0.63.2", default-features = false, features = ["ring"] }
 
 [lints.rust]
 irrefutable_let_patterns = "allow"

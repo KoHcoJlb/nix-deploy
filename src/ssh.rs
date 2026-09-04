@@ -5,7 +5,7 @@ use eyre::{Report, Result, bail};
 use futures::{StreamExt, stream::FuturesUnordered};
 use russh::{
     client,
-    keys::{Algorithm, PublicKey},
+    keys::{Algorithm, PublicKey, PublicKeyOrCertificate},
 };
 use tokio::{net::TcpStream, time::timeout};
 use tracing::error;
@@ -25,9 +25,9 @@ pub async fn keyscan<'a>(
         type Error = Report;
 
         async fn check_server_key(
-            &mut self, server_public_key: &PublicKey,
+            &mut self, server_public_key: &PublicKeyOrCertificate,
         ) -> Result<bool, Self::Error> {
-            Err(KeyReceived(server_public_key.clone()))?
+            Err(KeyReceived(server_public_key.public_key()))?
         }
     }
 

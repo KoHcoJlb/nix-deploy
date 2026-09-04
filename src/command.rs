@@ -10,9 +10,8 @@ use std::{
 use bstr::{BString, ByteVec};
 use derive_more::{Display, Error, From};
 use eyre::{Context, Report, Result};
-use itertools::Itertools;
 use polling::{Event, Events, Poller};
-use rustix::process::Pid;
+use rustix::{io::Errno, process::Pid};
 use rustix_openpty::openpty;
 use serde::de::DeserializeOwned;
 
@@ -30,7 +29,7 @@ pub struct CommandExit {
 pub enum CommandError {
     #[display("exit")]
     Exit(CommandExit),
-    #[display("run: {}", cmd.iter().join(" "))]
+    #[display("run: {}", cmd.join(" "))]
     Command {
         cmd: Vec<String>,
         source: Box<CommandError>,
@@ -66,7 +65,7 @@ pub struct PtyReader<R>(pub R);
 impl<R: Read> Read for PtyReader<R> {
     fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
         match self.0.read(buf) {
-            Err(err) if err.raw_os_error() == Some(libc::EIO) => Ok(0),
+            Err(err) if err.raw_os_error() == Some(Errno::IO.raw_os_error()) => Ok(0),
             res => res,
         }
     }

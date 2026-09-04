@@ -4,7 +4,6 @@ use camino::Utf8PathBuf;
 use eyre::{Context, eyre};
 use once_cell::sync::OnceCell;
 use serde::Deserialize;
-use serde_inline_default::serde_inline_default;
 
 #[derive(Debug, Default, Deserialize)]
 #[serde(default)]
@@ -17,10 +16,13 @@ pub struct SshConfig {
     pub config_file: Option<Utf8PathBuf>,
 }
 
-#[serde_inline_default]
+fn default_eval_store() -> Utf8PathBuf {
+    "auto".into()
+}
+
 #[derive(Debug, Deserialize)]
 pub struct Config {
-    #[serde_inline_default("auto".into())]
+    #[serde(default = "default_eval_store")]
     pub eval_store: Utf8PathBuf,
     #[serde(default)]
     pub sops: SopsConfig,
