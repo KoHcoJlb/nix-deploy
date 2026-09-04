@@ -18,7 +18,7 @@ use eyre::{Report, Result, ensure};
 use parking_lot::{Mutex, MutexGuard};
 use ratatui::{
     Frame, TerminalOptions, Viewport,
-    backend::CrosstermBackend,
+    backend::{Backend, CrosstermBackend},
     layout::{Alignment, Position},
     prelude::{Line, Stylize},
 };
@@ -30,6 +30,12 @@ use tracing_subscriber::fmt::{format::Writer, time::FormatTime};
 use crate::{command::CommandExit, util::downcast_ref};
 
 type RawTerminal<W = File> = ratatui::Terminal<CrosstermBackend<W>>;
+
+fn clear_terminal<B: Backend>(terminal: &mut ratatui::Terminal<B>) -> Result<(), B::Error> {
+    let origin = terminal.get_frame().area().as_position();
+    terminal.clear()?;
+    terminal.set_cursor_position(origin)
+}
 
 pub fn create_terminal(height: u16) -> RawTerminal<Stdout> {
     let backend = CrosstermBackend::new(stdout());
@@ -142,7 +148,7 @@ impl Terminal {
         (|| {
             let mut inner = self.inner.lock();
             if let Some(mut t) = inner.terminal.take() {
-                t.clear()?;
+                clear_terminal(&mut t)?;
             }
 
             tcsetattr(&inner.writer, Now, &inner.write_mode)?;
@@ -238,5 +244,26 @@ impl FormatTime for Uptime {
         write!(buf, "{}.{}s", elapsed.as_secs() % 60, elapsed.subsec_millis())?;
 
         write!(w, "{:>10}", buf)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use ratatui::{Terminal, TerminalOptions, Viewport, backend::TestBackend, layout::Position};
+
+    use super::clear_terminal;
+
+    #[test]
+    fn clear_terminal_resets_cursor_to_viewport_origin() {
+        let backend = TestBackend::new(80, 10);
+        let mut terminal =
+            Terminal::with_options(backend, TerminalOptions { viewport: Viewport::Inline(1) })
+                .unwrap();
+        let origin = terminal.get_frame().area().as_position();
+        terminal.set_cursor_position(Position::new(70, origin.y)).unwrap();
+
+        clear_terminal(&mut terminal).unwrap();
+
+        assert_eq!(terminal.get_cursor_position().unwrap(), origin);
     }
 }
