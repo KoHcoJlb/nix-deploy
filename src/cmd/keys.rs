@@ -24,6 +24,10 @@ use crate::{
 #[derive(Debug, Subcommand)]
 pub enum Commands {
     Fetch {
+        #[arg(help = "Fetch keys only for these system names (defaults to all systems)")]
+        names: Vec<String>,
+        #[arg(short, long, help = "Fetch and replace saved keys, keeping them if fetching fails")]
+        reset: bool,
         #[arg(short, long, help = "Refresh sops")]
         sops: bool,
     },
@@ -94,12 +98,19 @@ fn refresh_sops(cli_state: &mut CliState) -> Result<()> {
 }
 
 #[allow(clippy::mutable_key_type)]
-fn fetch(cli_state: &mut CliState) -> Result<()> {
-    let systems = get_systems(&cli_state.flake)?;
+fn fetch(cli_state: &mut CliState, names: &[String], reset: bool) -> Result<()> {
+    let systems = if names.is_empty() {
+        cli_state.flake.get_systems()
+    } else {
+        names.iter().map(|name| cli_state.flake.get_system(name)).collect::<Result<Vec<_>>>()?
+    };
+    let systems = systems
+        .into_iter()
+        .filter(|s| reset || s.state().read().public_key.is_none())
+        .collect::<Vec<_>>();
+    let systems = resolve_systems_metadata(&systems).context("resolve metadata")?;
 
-    let keys = Runtime::new()?.block_on(keyscan(
-        systems.iter().filter(|s| s.state().read().public_key.is_none()).copied(),
-    ));
+    let keys = Runtime::new()?.block_on(keyscan(systems));
     for (system, key) in keys {
         let KeyData::Ed25519(key) = *key.key_data() else {
             continue;
@@ -108,9 +119,10 @@ fn fetch(cli_state: &mut CliState) -> Result<()> {
         let mut state = system.state().write();
         if let Some(prev) = state.public_key
             && prev != key
+            && !reset
         {
             warn!(system = system.name(), "key changed")
-        } else if state.public_key.is_none() {
+        } else if reset || state.public_key.is_none() {
             info!(system = system.name(), "fetched key");
             state.public_key = Some(key);
         }
@@ -120,10 +132,10 @@ fn fetch(cli_state: &mut CliState) -> Result<()> {
 }
 
 pub(super) fn run(cli: &mut CliState, args: &Args) -> Result<()> {
-    match args.command {
-        Commands::Fetch { sops } => {
-            fetch(cli)?;
-            if sops {
+    match &args.command {
+        Commands::Fetch { names, reset, sops } => {
+            fetch(cli, names, *reset)?;
+            if *sops {
                 refresh_sops(cli)?;
             }
         }
@@ -131,4 +143,48 @@ pub(super) fn run(cli: &mut CliState, args: &Args) -> Result<()> {
     }
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use clap::Parser;
+
+    use super::Commands;
+    use crate::{Cli, cmd::Command};
+
+    #[test]
+    fn fetch_arguments() {
+        let cli = Cli::try_parse_from(["nix-deploy", "keys", "fetch"]).unwrap();
+        let Command::Keys(args) = cli.command else { panic!("expected keys command") };
+        let Commands::Fetch { names, reset, sops } = args.command else {
+            panic!("expected fetch command")
+        };
+
+        assert!(names.is_empty());
+        assert!(!reset);
+        assert!(!sops);
+
+        for reset_flag in ["--reset", "-r"] {
+            let cli = Cli::try_parse_from([
+                "nix-deploy",
+                "keys",
+                "fetch",
+                "host1",
+                "host2",
+                reset_flag,
+                "--sops",
+            ])
+            .unwrap();
+            let Command::Keys(args) = cli.command else { panic!("expected keys command") };
+            let Commands::Fetch { names, reset, sops } = args.command else {
+                panic!("expected fetch command")
+            };
+
+            assert_eq!(names, ["host1", "host2"]);
+            assert!(reset);
+            assert!(sops);
+        }
+
+        assert!(Cli::try_parse_from(["nix-deploy", "keys", "fetch", "--names"]).is_err());
+    }
 }
