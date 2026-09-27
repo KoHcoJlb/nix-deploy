@@ -95,7 +95,12 @@
             in
             {
               inherit name;
-              inherit (deployCfg) targetHost tags skip;
+              inherit (deployCfg)
+                targetHost
+                targetPort
+                tags
+                skip
+                ;
               sopsFiles = mapAttrsToList (_: secret: secret.sopsFile) system.config.sops.secrets;
             }
           ) systemsUnmerged;

@@ -21,6 +21,12 @@ with lib;
         default = "${config.networking.fqdn}";
       };
 
+      targetPort = mkOption {
+        type = types.port;
+        default = 22;
+        description = "SSH port used to connect to the deployment target.";
+      };
+
       tags = mkOption {
         type = types.listOf types.str;
         default = [ ];

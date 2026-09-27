@@ -71,10 +71,18 @@ struct ProgressUpdate {
 
 type ProgressTx<'a> = Sender<(&'a str, ProgressUpdate)>;
 
-fn resolve_target_host(target_host: &str) -> Result<IpAddr> {
-    let addr = (target_host, 22).to_socket_addrs()?.next().ok_or_eyre("no address")?;
+fn resolve_target_host(target_host: &str, target_port: u16) -> Result<IpAddr> {
+    let addr = (target_host, target_port).to_socket_addrs()?.next().ok_or_eyre("no address")?;
     TcpStream::connect_timeout(&addr, Duration::from_secs(5)).context("connect failed")?;
     Ok(addr.ip())
+}
+
+fn known_hosts_name(target_host: &str, target_port: u16) -> String {
+    if target_port == 22 {
+        target_host.to_owned()
+    } else {
+        format!("[{target_host}]:{target_port}")
+    }
 }
 
 struct Runner<'a> {
@@ -117,6 +125,9 @@ impl<'a> Runner<'a> {
         let mut ssh_config = File::create(&ssh_config_path)?;
         let known_hosts = dir.path().join("hosts");
 
+        let target_port = self.system.metadata().target_port;
+        writeln!(ssh_config, "Port {target_port}")?;
+
         if let Some(extra_config) = config().ssh.config_file.as_ref() {
             writeln!(ssh_config, "Include {extra_config}")?;
         }
@@ -133,7 +144,11 @@ impl<'a> Runner<'a> {
 
         fs::write(
             known_hosts,
-            format!("{target_host} {}", PublicKey::from(public_key).to_string()),
+            format!(
+                "{} {}",
+                known_hosts_name(target_host, target_port),
+                PublicKey::from(public_key).to_string()
+            ),
         )?;
 
         Ok((dir, ssh_config_path))
@@ -148,7 +163,8 @@ impl<'a> Runner<'a> {
             .context("read local version")?;
         debug!(%local_toplevel, %local_version);
 
-        let target_host = match resolve_target_host(&self.system.metadata().target_host) {
+        let metadata = self.system.metadata();
+        let target_host = match resolve_target_host(&metadata.target_host, metadata.target_port) {
             Ok(host) => host.to_string(),
             Err(err) => {
                 error!(?err, "could not connect");
@@ -360,4 +376,25 @@ pub fn run(state: &mut CliState, cmd: &Subcommand) -> Result<()> {
 
         Ok(())
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use std::net::TcpListener;
+
+    use super::{known_hosts_name, resolve_target_host};
+
+    #[test]
+    fn target_port_connection_and_host_keys() {
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let addr = listener.local_addr().unwrap();
+
+        let resolved = resolve_target_host("127.0.0.1", addr.port()).unwrap();
+
+        assert_eq!(resolved, addr.ip());
+        for host in ["example.test", "127.0.0.1", "::1"] {
+            assert_eq!(known_hosts_name(host, 22), host);
+            assert_eq!(known_hosts_name(host, 2222), format!("[{host}]:2222"));
+        }
+    }
 }

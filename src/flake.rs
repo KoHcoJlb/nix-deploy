@@ -49,10 +49,16 @@ impl<'de> DeserializeAs<'de, Ed25519PublicKey> for PublicKeyFormat {
     }
 }
 
+fn default_target_port() -> u16 {
+    22
+}
+
 #[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SystemMetadata {
     pub target_host: String,
+    #[serde(default = "default_target_port")]
+    pub target_port: u16,
     pub tags: HashSet<String>,
     pub skip: bool,
     pub sops_files: Vec<Utf8PathBuf>,
@@ -215,5 +221,32 @@ impl Flake {
         fs::write(STATE_FILE, json).context(format!("write {STATE_FILE}"))?;
 
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::SystemMetadata;
+
+    #[test]
+    fn target_port_metadata() {
+        let mut metadata = serde_json::json!({
+            "targetHost": "example.test",
+            "tags": [],
+            "skip": false,
+            "sopsFiles": [],
+        });
+
+        let system: SystemMetadata = serde_json::from_value(metadata.clone()).unwrap();
+        assert_eq!(system.target_port, 22);
+
+        metadata["targetPort"] = 2222.into();
+        let system: SystemMetadata = serde_json::from_value(metadata.clone()).unwrap();
+        assert_eq!(system.target_port, 2222);
+
+        for port in [-1, 65536] {
+            metadata["targetPort"] = port.into();
+            assert!(serde_json::from_value::<SystemMetadata>(metadata.clone()).is_err());
+        }
     }
 }

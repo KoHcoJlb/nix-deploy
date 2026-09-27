@@ -43,7 +43,10 @@ pub async fn keyscan<'a>(
                 async {
                     let stream = timeout(
                         Duration::from_secs(10),
-                        TcpStream::connect((system.metadata().target_host.as_str(), 22)),
+                        TcpStream::connect((
+                            system.metadata().target_host.as_str(),
+                            system.metadata().target_port,
+                        )),
                     )
                     .await??;
                     if let Err(err) =
