@@ -4,6 +4,7 @@ use std::{
     fs::File,
     io::Write,
     net::{IpAddr, TcpStream, ToSocketAddrs},
+    num::NonZeroUsize,
     process::Command,
     sync::atomic::{AtomicBool, Ordering::SeqCst},
     thread::scope,
@@ -46,12 +47,15 @@ use crate::{
 pub struct BuildCmd {
     #[command(flatten)]
     systems: SystemSelector,
+    /// Maximum number of systems building or deploying concurrently (default: unlimited)
+    #[arg(short = 'j', long, value_name = "N")]
+    jobs: Option<NonZeroUsize>,
 }
 
 #[derive(Args, Debug)]
 pub struct DeployCmd {
     #[command(flatten)]
-    systems: SystemSelector,
+    build: BuildCmd,
     #[arg(short, long)]
     reboot: bool,
     #[arg(short, long)]
@@ -317,12 +321,11 @@ fn render_progress(frame: &mut Frame, progress: &HashMap<&str, ProgressUpdate>) 
 }
 
 pub fn run(state: &mut CliState, cmd: &Subcommand) -> Result<()> {
-    let systems = match cmd {
-        Subcommand::Build(cmd) => &cmd.systems,
-        Subcommand::Deploy(cmd) => &cmd.systems,
-    }
-    .resolve(&state.flake)
-    .context("resolve systems")?;
+    let args = match cmd {
+        Subcommand::Build(cmd) => cmd,
+        Subcommand::Deploy(cmd) => &cmd.build,
+    };
+    let systems = args.systems.resolve(&state.flake).context("resolve systems")?;
 
     for system in &systems {
         for path in &system.metadata().sops_files {
@@ -345,17 +348,28 @@ pub fn run(state: &mut CliState, cmd: &Subcommand) -> Result<()> {
         })
         .collect::<Vec<_>>();
 
-    scope(|s| {
-        for runner in &runners {
-            let ptx = progress_tx.clone();
-            s.spawn(move || {
-                let _span = info_span!("", system = runner.system.name()).entered();
+    let jobs = args.jobs.map(NonZeroUsize::get).unwrap_or(runners.len());
+    let pending = Mutex::new(runners.iter());
 
-                if let Err(err) = runner.run(&ptx)
-                    && !runner.interrupted.load(SeqCst)
-                {
-                    print_error(err);
-                    runner.post_update(&ptx, "error".red());
+    scope(|s| {
+        for _ in 0..jobs.min(runners.len()) {
+            let ptx = progress_tx.clone();
+            let pending = &pending;
+            s.spawn(move || {
+                loop {
+                    let Some(runner) = pending.lock().next() else { break };
+                    if runner.interrupted.load(SeqCst) {
+                        break;
+                    }
+
+                    let _span = info_span!("", system = runner.system.name()).entered();
+
+                    if let Err(err) = runner.run(&ptx)
+                        && !runner.interrupted.load(SeqCst)
+                    {
+                        print_error(err);
+                        runner.post_update(&ptx, "error".red());
+                    }
                 }
             });
         }
@@ -382,7 +396,38 @@ pub fn run(state: &mut CliState, cmd: &Subcommand) -> Result<()> {
 mod tests {
     use std::net::TcpListener;
 
+    use clap::Parser;
+
     use super::{known_hosts_name, resolve_target_host};
+    use crate::{Cli, cmd::Command};
+
+    #[test]
+    fn build_and_deploy_jobs_require_a_positive_limit() {
+        for command in ["build", "deploy"] {
+            for (args, expected) in
+                [(vec![], None), (vec!["-j", "1"], Some(1)), (vec!["--jobs", "2"], Some(2))]
+            {
+                let cli = Cli::try_parse_from(
+                    ["nix-deploy", command, "--tags", "all"].into_iter().chain(args),
+                )
+                .unwrap();
+
+                let args = match cli.command {
+                    Command::Build(super::Subcommand::Build(cmd)) => cmd,
+                    Command::Build(super::Subcommand::Deploy(cmd)) => cmd.build,
+                    _ => panic!("expected build or deploy command"),
+                };
+                assert_eq!(args.jobs.map(std::num::NonZeroUsize::get), expected);
+            }
+
+            for value in ["0", "-1", "invalid", ""] {
+                assert!(
+                    Cli::try_parse_from(["nix-deploy", command, "--tags", "all", "--jobs", value])
+                        .is_err()
+                );
+            }
+        }
+    }
 
     #[test]
     fn target_port_connection_and_host_keys() {

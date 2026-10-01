@@ -16,6 +16,7 @@
 - Every invocation first loads `nix-deploy.toml`, so even `--help` is not context-free. Operational commands then initialize a real stdout TTY, evaluate `path:./flake`, and read/write `systems.json`.
 - `eval_store` defaults to `auto`; any other value is canonicalized at startup and must already exist. The flake directory is intentionally evaluated with path syntax so untracked files are visible.
 - Builds use `nix build --impure path:./flake#nixosConfigurations.<name>.config.system.build.toplevel -o cache/<name>` and run selected systems concurrently.
+- `build --jobs N` and `deploy --jobs N` (`-j N`) limit concurrent systems across their entire build/deploy sequence. The limit must be positive; omitting it leaves concurrency unlimited.
 - System selection requires exactly one of `--names` or `--tags`. Tag selection excludes `deploy.skip` systems and matches when a system contains every requested tag; `--tags all` selects every non-skipped system.
 
 # Deploy And Keys
