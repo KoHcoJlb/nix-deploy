@@ -158,10 +158,18 @@ impl Terminal {
         .unwrap()
     }
 
-    pub fn resize(&self, height: u16) {
+    pub fn resize(&self, height: u16) -> Result<()> {
         let mut inner = self.inner.lock();
+        if inner.height == height {
+            return Ok(());
+        }
+
+        if let Some(mut terminal) = inner.terminal.take() {
+            clear_terminal(&mut terminal)?;
+        }
         inner.height = height;
-        inner.terminal.take();
+
+        Ok(())
     }
 
     pub fn draw<F>(&self, render_callback: F) -> Result<()>
@@ -249,9 +257,53 @@ impl FormatTime for Uptime {
 
 #[cfg(test)]
 mod tests {
-    use ratatui::{Terminal, TerminalOptions, Viewport, backend::TestBackend, layout::Position};
+    use ratatui::{
+        Terminal, TerminalOptions, Viewport,
+        backend::{Backend, TestBackend},
+        layout::Position,
+        text::Text,
+    };
 
     use super::clear_terminal;
+
+    #[test]
+    fn growing_status_viewport_preserves_logs_and_origin() {
+        let mut backend = TestBackend::with_lines([
+            "first log ",
+            "second log",
+            "          ",
+            "          ",
+            "          ",
+            "          ",
+        ]);
+        backend.set_cursor_position((0, 2)).unwrap();
+        let mut terminal =
+            Terminal::with_options(backend, TerminalOptions { viewport: Viewport::Inline(2) })
+                .unwrap();
+        terminal
+            .draw(|frame| frame.render_widget(Text::from("alpha\nbeta"), frame.area()))
+            .unwrap();
+
+        clear_terminal(&mut terminal).unwrap();
+        let mut terminal = Terminal::with_options(
+            terminal.backend().clone(),
+            TerminalOptions { viewport: Viewport::Inline(3) },
+        )
+        .unwrap();
+        terminal
+            .draw(|frame| frame.render_widget(Text::from("alpha\nbeta\ngamma"), frame.area()))
+            .unwrap();
+
+        assert_eq!(terminal.get_frame().area().y, 2);
+        terminal.backend().assert_buffer_lines([
+            "first log ",
+            "second log",
+            "alpha     ",
+            "beta      ",
+            "gamma     ",
+            "          ",
+        ]);
+    }
 
     #[test]
     fn clear_terminal_resets_cursor_to_viewport_origin() {

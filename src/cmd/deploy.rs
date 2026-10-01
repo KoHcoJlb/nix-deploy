@@ -68,9 +68,19 @@ pub enum Subcommand {
     Deploy(DeployCmd),
 }
 
-#[derive(Default, Debug)]
-struct ProgressUpdate {
-    text: Text<'static>,
+#[derive(Debug)]
+enum ProgressUpdate {
+    Status(Text<'static>),
+    Finished,
+}
+
+impl ProgressUpdate {
+    fn apply<'a>(self, progress: &mut HashMap<&'a str, Text<'static>>, system_name: &'a str) {
+        match self {
+            Self::Status(text) => progress.insert(system_name, text),
+            Self::Finished => progress.remove(system_name),
+        };
+    }
 }
 
 type ProgressTx<'a> = Sender<(&'a str, ProgressUpdate)>;
@@ -98,7 +108,11 @@ struct Runner<'a> {
 
 impl<'a> Runner<'a> {
     fn post_update(&self, ptx: &ProgressTx<'a>, text: impl Into<Text<'static>>) {
-        ptx.send((self.system.name(), ProgressUpdate { text: text.into() })).ok();
+        ptx.send((self.system.name(), ProgressUpdate::Status(text.into()))).ok();
+    }
+
+    fn post_finished(&self, ptx: &ProgressTx<'a>) {
+        ptx.send((self.system.name(), ProgressUpdate::Finished)).ok();
     }
 
     fn run_tty_command(&self, ptx: &ProgressTx<'a>, description: &str, cmd: Command) -> Result<()> {
@@ -194,8 +208,8 @@ impl<'a> Runner<'a> {
         .to_owned();
         debug!(remote_toplevel);
         if remote_toplevel == local_toplevel {
-            self.post_update(ptx, "already deployed".cyan());
             warn!("already deployed");
+            self.post_finished(ptx);
             return Ok(());
         }
 
@@ -266,7 +280,7 @@ impl<'a> Runner<'a> {
         }
 
         info!("deployed");
-        self.post_update(ptx, "deployed".green());
+        self.post_finished(ptx);
 
         Ok(())
     }
@@ -292,7 +306,7 @@ impl<'a> Runner<'a> {
             self.deploy(ptx)?;
         } else {
             info!("built");
-            self.post_update(ptx, "built".green());
+            self.post_finished(ptx);
         };
 
         Ok(())
@@ -306,7 +320,7 @@ impl<'a> Runner<'a> {
     }
 }
 
-fn render_progress(frame: &mut Frame, progress: &HashMap<&str, ProgressUpdate>) {
+fn render_progress(frame: &mut Frame, progress: &HashMap<&str, Text<'static>>) {
     let mut progress = progress.iter().collect::<Vec<_>>();
     progress.sort_by_key(|it| it.0);
 
@@ -316,7 +330,7 @@ fn render_progress(frame: &mut Frame, progress: &HashMap<&str, ProgressUpdate>) 
         let [name_area, progress_ares] =
             Layout::horizontal([Length(name.width() as u16), Fill(1)]).areas(row);
         frame.render_widget(name, name_area);
-        frame.render_widget(&progress.text, progress_ares);
+        frame.render_widget(progress, progress_ares);
     }
 }
 
@@ -375,11 +389,13 @@ pub fn run(state: &mut CliState, cmd: &Subcommand) -> Result<()> {
         }
         drop(progress_tx);
 
-        TERMINAL.resize(systems.len() as u16);
         let mut progress = HashMap::new();
         while let Ok((system_name, update)) = progress_rx.recv() {
-            progress.insert(system_name, update);
-            TERMINAL.draw(|f| render_progress(f, &progress))?;
+            update.apply(&mut progress, system_name);
+            TERMINAL.resize(progress.len() as u16)?;
+            if !progress.is_empty() {
+                TERMINAL.draw(|f| render_progress(f, &progress))?;
+            }
 
             if handle_ctrlc(Duration::default()) {
                 for runner in &runners {
@@ -394,12 +410,35 @@ pub fn run(state: &mut CliState, cmd: &Subcommand) -> Result<()> {
 
 #[cfg(test)]
 mod tests {
-    use std::net::TcpListener;
+    use std::{collections::HashMap, net::TcpListener};
 
     use clap::Parser;
 
-    use super::{known_hosts_name, resolve_target_host};
+    use super::{ProgressUpdate, known_hosts_name, resolve_target_host};
     use crate::{Cli, cmd::Command};
+
+    #[test]
+    fn finished_systems_are_removed_from_progress() {
+        let mut progress = HashMap::new();
+        ProgressUpdate::Status("building".into()).apply(&mut progress, "build");
+        ProgressUpdate::Status("deploying".into()).apply(&mut progress, "deploy");
+
+        ProgressUpdate::Finished.apply(&mut progress, "build");
+
+        assert_eq!(progress.len(), 1);
+        assert!(progress.contains_key("deploy"));
+
+        ProgressUpdate::Finished.apply(&mut progress, "deploy");
+
+        assert!(progress.is_empty());
+
+        for status in ["error", "could not connect", "versions differ"] {
+            ProgressUpdate::Status(status.into()).apply(&mut progress, status);
+        }
+        ProgressUpdate::Finished.apply(&mut progress, "already-deployed");
+
+        assert_eq!(progress.len(), 3);
+    }
 
     #[test]
     fn build_and_deploy_jobs_require_a_positive_limit() {
