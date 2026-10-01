@@ -5,10 +5,12 @@ use std::{
     io::{Stdout, Write, stdout},
     ops::Deref,
     os::fd::AsFd,
+    process::Command,
     sync::OnceLock,
     time::{Duration, Instant},
 };
 
+use ansi_to_tui::IntoText;
 use crossterm::{
     event,
     event::{Event, KeyCode, KeyEvent, KeyModifiers},
@@ -21,13 +23,17 @@ use ratatui::{
     backend::{Backend, CrosstermBackend},
     layout::{Alignment, Position},
     prelude::{Line, Stylize},
+    widgets::{Paragraph, Widget, Wrap},
 };
 use rustix::termios::{OptionalActions::Now, OutputModes, Termios, tcgetattr, tcsetattr};
 use tap::{Pipe, Tap};
 use tracing::error;
 use tracing_subscriber::fmt::{format::Writer, time::FormatTime};
 
-use crate::{command::CommandExit, util::downcast_ref};
+use crate::{
+    command::{CommandExit, TTYChild},
+    util::downcast_ref,
+};
 
 type RawTerminal<W = File> = ratatui::Terminal<CrosstermBackend<W>>;
 
@@ -35,6 +41,27 @@ fn clear_terminal<B: Backend>(terminal: &mut ratatui::Terminal<B>) -> Result<(),
     let origin = terminal.get_frame().area().as_position();
     terminal.clear()?;
     terminal.set_cursor_position(origin)
+}
+
+fn insert_output<B: Backend>(terminal: &mut ratatui::Terminal<B>, bytes: &[u8]) -> io::Result<()>
+where
+    B::Error: Send + Sync + 'static,
+{
+    terminal.autoresize().map_err(io::Error::other)?;
+
+    let text = bytes.into_text().map_err(io::Error::other)?;
+    let paragraph = Paragraph::new(text).wrap(Wrap { trim: false });
+    let height = paragraph
+        .line_count(terminal.get_frame().area().width)
+        .try_into()
+        .map_err(io::Error::other)?;
+    terminal
+        .insert_before(height, |buffer| paragraph.render(buffer.area, buffer))
+        .map_err(io::Error::other)?;
+
+    // Keep cursor tracking anchored to the moved viewport for subsequent resizes.
+    let origin = terminal.get_frame().area().as_position();
+    terminal.set_cursor_position(origin).map_err(io::Error::other)
 }
 
 pub fn create_terminal(height: u16) -> RawTerminal<Stdout> {
@@ -145,17 +172,15 @@ impl Terminal {
     }
 
     pub fn writer(&self) -> impl Write {
-        (|| {
-            let mut inner = self.inner.lock();
-            if let Some(mut t) = inner.terminal.take() {
-                clear_terminal(&mut t)?;
-            }
+        TerminalWriter { inner: self.inner.lock(), buffer: Vec::new() }
+    }
 
-            tcsetattr(&inner.writer, Now, &inner.write_mode)?;
+    pub fn run_command(&self, cmd: Command) -> Result<()> {
+        TTYChild::spawn(cmd, false)?.wait(|line| {
+            self.writer().write_all(line.as_bytes()).unwrap();
+        })?;
 
-            Ok(TerminalWriter(inner)) as io::Result<_>
-        })()
-        .unwrap()
+        Ok(())
     }
 
     pub fn resize(&self, height: u16) -> Result<()> {
@@ -190,21 +215,46 @@ impl Terminal {
     }
 }
 
-struct TerminalWriter<'a>(MutexGuard<'a, Inner>);
+struct TerminalWriter<'a> {
+    inner: MutexGuard<'a, Inner>,
+    buffer: Vec<u8>,
+}
 
 impl Write for TerminalWriter<'_> {
     fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
-        self.0.writer.write(buf)
+        self.buffer.write(buf)
     }
 
     fn flush(&mut self) -> io::Result<()> {
-        self.0.writer.flush()
+        if self.buffer.is_empty() {
+            return Ok(());
+        }
+
+        // Scrolling regions need at least two rows; retain normal output in very short terminals.
+        if let Some(terminal) = &mut self.inner.terminal
+            && terminal.get_frame().area().height.saturating_add(1) >= terminal.size()?.height
+        {
+            clear_terminal(terminal)?;
+            self.inner.terminal.take();
+        }
+
+        if let Some(terminal) = &mut self.inner.terminal {
+            insert_output(terminal, &self.buffer)?;
+        } else {
+            tcsetattr(&self.inner.writer, Now, &self.inner.write_mode)?;
+            let result = self.inner.writer.write_all(&self.buffer);
+            tcsetattr(&self.inner.writer, Now, &self.inner.raw_mode)?;
+            result?;
+        }
+        self.buffer.clear();
+
+        Ok(())
     }
 }
 
 impl Drop for TerminalWriter<'_> {
     fn drop(&mut self) {
-        tcsetattr(&self.0.writer, Now, &self.0.raw_mode).unwrap();
+        self.flush().unwrap();
     }
 }
 
@@ -260,11 +310,65 @@ mod tests {
     use ratatui::{
         Terminal, TerminalOptions, Viewport,
         backend::{Backend, TestBackend},
-        layout::Position,
+        buffer::Buffer,
+        layout::{Position, Rect},
+        style::{Color, Style},
         text::Text,
     };
 
-    use super::clear_terminal;
+    use super::{clear_terminal, insert_output};
+
+    #[test]
+    fn output_moves_status_rows_without_redrawing_them() {
+        let mut terminal = Terminal::with_options(
+            TestBackend::new(16, 8),
+            TerminalOptions { viewport: Viewport::Inline(2) },
+        )
+        .unwrap();
+        let statuses = Text::from("alpha\nbeta");
+        terminal.draw(|frame| frame.render_widget(&statuses, frame.area())).unwrap();
+
+        insert_output(&mut terminal, b"\x1b[32m0s INFO built\x1b[0m\n  detail wraps over\n\n")
+            .unwrap();
+
+        assert_eq!(terminal.get_frame().area().y, 4);
+        let mut expected = Buffer::with_lines([
+            "0s INFO built   ",
+            "  detail wraps  ",
+            "over            ",
+            "                ",
+            "alpha           ",
+            "beta            ",
+            "                ",
+            "                ",
+        ]);
+        expected.set_style(Rect::new(0, 0, 13, 1), Style::new().fg(Color::Green));
+        terminal.backend().assert_buffer(&expected);
+
+        insert_output(&mut terminal, b"first\nsecond\nthird\n").unwrap();
+
+        assert_eq!(terminal.get_frame().area().y, 6);
+        let expected = Buffer::with_lines([
+            "  detail wraps  ",
+            "over            ",
+            "                ",
+            "first           ",
+            "second          ",
+            "third           ",
+            "alpha           ",
+            "beta            ",
+        ]);
+        terminal.backend().assert_buffer(&expected);
+
+        terminal.draw(|frame| frame.render_widget(&statuses, frame.area())).unwrap();
+
+        terminal.backend().assert_buffer(&expected);
+
+        terminal.backend_mut().resize(16, 10);
+        terminal.draw(|frame| frame.render_widget(&statuses, frame.area())).unwrap();
+
+        assert_eq!(terminal.get_frame().area().y, 6);
+    }
 
     #[test]
     fn growing_status_viewport_preserves_logs_and_origin() {

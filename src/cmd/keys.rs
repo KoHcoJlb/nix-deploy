@@ -1,7 +1,7 @@
 use std::{
     collections::{HashMap, HashSet},
     fs,
-    process::{Command, Stdio},
+    process::Command,
 };
 
 use camino::Utf8Path;
@@ -81,18 +81,14 @@ fn refresh_sops(cli_state: &mut CliState) -> Result<()> {
             info!(%file, "encrypt");
 
             let mut cmd = Command::new("sops");
-            cmd.args(["encrypt", "-i"]).arg(file).stdin(Stdio::null());
-
-            let _writer = TERMINAL.writer();
-            cmd.spawn()?.wait()?;
+            cmd.args(["encrypt", "-i"]).arg(file);
+            TERMINAL.run_command(cmd)?;
         }
     }
 
     let mut cmd = Command::new("sops");
-    cmd.args(["updatekeys", "-y"]).args(already_encrypted_files).stdin(Stdio::null());
-
-    let _writer = TERMINAL.writer();
-    cmd.spawn()?.wait()?;
+    cmd.args(["updatekeys", "-y"]).args(already_encrypted_files);
+    TERMINAL.run_command(cmd)?;
 
     Ok(())
 }
