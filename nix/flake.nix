@@ -11,7 +11,10 @@
     { nixpkgs, sops-nix, ... }:
     let
       lib = nixpkgs.lib.extend (
-        _: _: {
+        final: _: {
+          formatHost =
+            host: if final.hasInfix ":" host && !final.hasPrefix "[" host then "[${host}]" else host;
+
           noChroot =
             x:
             x.overrideAttrs {
@@ -25,30 +28,59 @@
       init =
         {
           inputs,
-          hosts,
+          systems,
           values,
+          domain ? null,
+          exportModules ? [ ],
         }:
 
         with lib;
         let
-          hostSystem = "x86_64-linux";
+          hostPlatform = "x86_64-linux";
 
-          makeSystemFn =
-            name: config: modules:
-            nixosSystem {
+          initializedSystems = mapAttrs (
+            name: definition:
+            (evalModules {
+              prefix = [
+                "systems"
+                name
+              ];
               specialArgs = {
-                inherit inputs values;
-
-                systems = mapAttrs (_: system: system.config) systemsUnmerged;
+                inherit
+                  lib
+                  inputs
+                  values
+                  name
+                  ;
               };
               modules = [
-                ./deploy.nix
+                ./system.nix
+                { domain = mkDefault domain; }
+                (setDefaultModuleLocation ((builtins.unsafeGetAttrPos name systems).file or "<unknown-file>"
+                ) definition)
+              ];
+            }).config
+          ) systems;
+
+          sharedExports = evalModules {
+            specialArgs = { inherit inputs values; };
+            modules = exportModules ++ mapAttrsToList (_: system: system.exports) initializedSystems;
+          };
+
+          makeSystem =
+            name: system:
+            nixosSystem {
+              specialArgs = {
+                inherit inputs values system;
+                globalExports = sharedExports.config;
+              };
+              modules = [
                 sops-nix.nixosModules.sops
-                config
+                system.nixosModule
                 {
                   nixpkgs = {
-                    buildPlatform = mkDefault hostSystem;
-                    hostPlatform = mkDefault hostSystem;
+                    buildPlatform = mkDefault hostPlatform;
+                    hostPlatform = mkDefault hostPlatform;
 
                     overlays = [
                       (_: _: {
@@ -57,53 +89,39 @@
                     ];
                   };
                   networking = {
-                    hostName = name;
+                    hostName = mkDefault name;
+                    domain = mkDefault system.domain;
                   };
                 }
-              ]
-              ++ modules;
+              ];
             };
 
-          systems = mapAttrs makeSystemFn hosts;
-
-          systemsUnmerged = mapAttrs (_: systemFn: systemFn [ ]) systems;
-
-          systemsMerged = mapAttrs (
-            name: systemFn:
-            systemFn (
-              mapAttrsToList (_: system: {
-                deploy.global = {
-                  imports = map (def: {
-                    _file = def.file;
-                    imports = [ def.value ];
-                  }) system.options.deploy.global.definitionsWithLocations;
-                };
-              }) (removeAttrs systemsUnmerged [ name ])
-            )
-          ) systems;
+          nixosConfigurations = mapAttrs makeSystem initializedSystems;
 
         in
         {
-          inherit systemsUnmerged;
-          nixosConfigurations = systemsMerged;
-          systemNames = attrNames systems;
+          inherit nixosConfigurations;
 
+          exports = sharedExports.config;
+          systems = initializedSystems;
+
+          systemNames = attrNames initializedSystems;
           systemMetadata = mapAttrs (
             name: system:
             let
-              deployCfg = system.config.deploy;
+              # Skip unknown-option checking only for metadata; builds use nixosConfigurations unchanged.
+              config =
+                (nixosConfigurations.${name}.extendModules {
+                  modules = [ { _module.check = mkForce false; } ];
+                }).config;
             in
             {
               inherit name;
-              inherit (deployCfg)
-                targetHost
-                targetPort
-                tags
-                skip
-                ;
-              sopsFiles = mapAttrsToList (_: secret: secret.sopsFile) system.config.sops.secrets;
+              inherit (system) targetHost targetPort skip;
+              tags = system.tags ++ [ config.nixpkgs.hostPlatform.linuxArch ];
+              sopsFiles = mapAttrsToList (_: secret: secret.sopsFile) config.sops.secrets;
             }
-          ) systemsUnmerged;
+          ) initializedSystems;
         };
     };
 }

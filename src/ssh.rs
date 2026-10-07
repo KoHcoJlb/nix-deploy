@@ -13,7 +13,7 @@ use tracing::error;
 use crate::flake::System;
 
 pub async fn keyscan<'a>(
-    hosts: impl IntoIterator<Item = System<'a, true>>,
+    systems: impl IntoIterator<Item = System<'a, true>>,
 ) -> HashMap<System<'a, true>, PublicKey> {
     struct ClientHandler;
 
@@ -35,7 +35,7 @@ pub async fn keyscan<'a>(
     config.preferred.key = Cow::Borrowed(&[Algorithm::Ed25519]);
     let config = Arc::new(config);
 
-    hosts
+    systems
         .into_iter()
         .map(async |system| {
             (
