@@ -280,7 +280,8 @@ impl<'a> Runner<'a> {
                 ptx,
                 "reboot",
                 ssh_command().tap_mut(|cmd| {
-                    cmd.arg("reboot");
+                    // Let SSH return the exit status before shutdown closes the connection.
+                    cmd.args(["systemd-run", "--on-active=5s", "--collect", "systemctl", "reboot"]);
                 }),
             )?;
         }
