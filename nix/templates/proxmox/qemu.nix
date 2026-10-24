@@ -1,4 +1,6 @@
-{ modulesPath, ... }:
+{ lib, modulesPath, options, ... }:
+
+with lib;
 
 {
   imports = [
@@ -12,7 +14,8 @@
     # Regenerate machine-id and ssh host keys from VM UUID
     initrd = {
       systemd = {
-        enable = true;
+        # Removed options retain an untyped stub on newer nixpkgs revisions.
+        enable = mkIf ((options.boot.initrd.systemd.enable.type.name or null) == "bool") true;
 
         services = {
           host-keys-setup = rec {
